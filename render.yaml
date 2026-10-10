@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: brahmacharya-nofap-streak-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: OWNER_ID
+        value: "5650859707"
+      - key: DATABASE_CHANNEL_ID
+        value: "-5353068930"
+      - key: PORT
+        value: "8080"
