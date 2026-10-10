@@ -16,7 +16,7 @@ except RuntimeError:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 from pyrogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
@@ -27,14 +27,17 @@ from pyrogram.types import (
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 
 from deep_translator import GoogleTranslator
-from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # ==================== CONFIGURATION ====================
-API_ID = int(os.getenv("API_ID", "0"))
-API_HASH = os.getenv("API_HASH", "")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+API_ID = int(os.getenv("API_ID", "36971153"))
+API_HASH = os.getenv("API_HASH", "e5e4c9c88d0c5c2654d8fbe985523c9c")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8829083195:AAG9e8YpJxDd-I8DHplvc8XInIJCCdizRVI")
 OWNER_ID = int(os.getenv("OWNER_ID", "5650859707"))
 DATABASE_CHANNEL_ID = int(os.getenv("DATABASE_CHANNEL_ID", "-5353068930"))
 PORT = int(os.getenv("PORT", "8080"))
@@ -1039,11 +1042,7 @@ def run_http_server():
     httpd.serve_forever()
 
 # ==================== MAIN RUNNER ====================
-async def main():
-    # Start background HTTP server
-    http_thread = threading.Thread(target=run_http_server, daemon=True)
-    http_thread.start()
-
+async def start_services():
     logger.info("Starting Brahmacharya & NoFap Streak Bot...")
     await app.start()
     
@@ -1071,12 +1070,21 @@ async def main():
 
     me = await app.get_me()
     logger.info(f"🔥 @{me.username} is now ONLINE and serving Brahmacharis!")
-    
-    # Keep running until stopped
-    await asyncio.Event().wait()
+    await idle()
+    await app.stop()
 
 if __name__ == "__main__":
+    # Start background HTTP server
+    http_thread = threading.Thread(target=run_http_server, daemon=True)
+    http_thread.start()
+
     try:
-        asyncio.run(main())
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    try:
+        loop.run_until_complete(start_services())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Bot shutting down gracefully.")
