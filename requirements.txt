@@ -1,5 +1,4 @@
 pyrogram>=2.0.106
-TgCrypto>=1.2.5
 deep-translator>=1.11.4
 python-dotenv>=1.0.1
 requests>=2.31.0
