@@ -426,95 +426,17 @@ class Database:
 
 db = Database()
 
-# ==================== TRANSLATION SYSTEM ====================
-SUPPORTED_LANGUAGES = {
-    "en": {"name": "English", "flag": "🇬🇧"},
-    "hi": {"name": "हिन्दी (Hindi)", "flag": "🇮🇳"},
-    "hinglish": {"name": "Hinglish", "flag": "🔤"},
-    "or": {"name": "ଓଡ଼ିଆ (Odia)", "flag": "🇮🇳"},
-    "bn": {"name": "বাংলা (Bengali)", "flag": "🇮🇳"},
-    "te": {"name": "తెలుగు (Telugu)", "flag": "🇮🇳"},
-    "ta": {"name": "தமிழ் (Tamil)", "flag": "🇮🇳"},
-    "mr": {"name": "मराठी (Marathi)", "flag": "🇮🇳"},
-    "gu": {"name": "ગુજરાતી (Gujarati)", "flag": "🇮🇳"},
-    "kn": {"name": "ಕನ್ನಡ (Kannada)", "flag": "🇮🇳"},
-    "ml": {"name": "മലയാളം (Malayalam)", "flag": "🇮🇳"},
-    "pa": {"name": "ਪੰਜਾਬੀ (Punjabi)", "flag": "🇮🇳"},
-    "es": {"name": "Español (Spanish)", "flag": "🇪🇸"},
-    "ru": {"name": "Русский (Russian)", "flag": "🇷🇺"},
-    "fr": {"name": "Français (French)", "flag": "🇫🇷"},
-    "de": {"name": "Deutsch (German)", "flag": "🇩🇪"},
-    "ar": {"name": "العربية (Arabic)", "flag": "🇸🇦"}
-}
+# ==================== TRANSLATION & LOCALIZATION SYSTEM ====================
+from locales import (
+    SUPPORTED_LANGUAGES,
+    LOCALES,
+    get_text,
+    get_rank_and_badge_localized
+)
 
-# Pre-crafted core templates for instant zero-latency responses in main languages
-STATIC_TEXTS = {
-    "greeting": {
-        "en": "Ram Ram Brahmachari {name} 🙏\n\nWelcome to the Sacred Brahmacharya & NoFap Sanctum.\nPreserve your divine energy (Veerya), awaken your spiritual luster (Ojas), and conquer your lower senses.",
-        "hi": "राम राम ब्रह्मचारी {name} 🙏\n\nपवित्र ब्रह्मचर्य एवं संकल्प साधना में आपका स्वागत है।\nअपने वीर्य की रक्षा करें, दिव्य ओज शक्ति को जागृत करें और अपनी इंद्रियों पर विजय प्राप्त करें।",
-        "hinglish": "Ram Ram Brahmachari {name} 🙏\n\nPavitra Brahmacharya aur NoFap Sadhana me aapka swagat hai.\nApne Veerya ki raksha karein, Ojas shakti jagayein aur apne senses par vijay paayein.",
-        "or": "ରାମ ରାମ ବ୍ରହ୍ମଚାରୀ {name} 🙏\n\nପବିତ୍ର ବ୍ରହ୍ମଚର୍ଯ୍ୟ ଏବଂ ନୋଫାପ୍ ସାଧନାରେ ଆପଣଙ୍କୁ ସ୍ୱାଗତ।\nଆପଣଙ୍କ ଦିବ୍ୟ ବୀର୍ଯ୍ୟ ଶକ୍ତି ସଂରକ୍ଷଣ କରନ୍ତୁ, ଓଜ ଶକ୍ତି ଜାଗ୍ରତ କରନ୍ତୁ ଏବଂ ଇନ୍ଦ୍ରିୟ ଉପରେ ବିଜୟ ଲାଭ କରନ୍ତୁ।"
-    },
-    "streak_title": {
-        "en": "⚡ **BRAHMACHARYA STREAK STATUS** ⚡",
-        "hi": "⚡ **ब्रह्मचर्य साधना स्थिति** ⚡",
-        "hinglish": "⚡ **BRAHMACHARYA STREAK STATUS** ⚡",
-        "or": "⚡ **ବ୍ରହ୍ମଚର୍ଯ୍ୟ ସାଧନା ସ୍ଥିତି** ⚡"
-    },
-    "rank_title": {
-        "en": "👑 **Current Rank & Badge**:",
-        "hi": "👑 **वर्तमान पद एवं उपाधि**:",
-        "hinglish": "👑 **Current Rank & Badge**:",
-        "or": "👑 **ବର୍ତ୍ତମାନ ପଦବୀ ଏବଂ ଉପାଧି**:"
-    }
-}
-
-@lru_cache(maxsize=512)
-def translate_text(text: str, target_lang: str) -> str:
-    """Translates text with caching to avoid rate limits and improve speed."""
-    if not text or target_lang in ["en", "hinglish"]:
-        return text
-    try:
-        # map odia code to 'or' if deep-translator supports it, or google translation
-        lang = "or" if target_lang == "or" else target_lang
-        translated = GoogleTranslator(source='auto', target=lang).translate(text)
-        return translated if translated else text
-    except Exception as e:
-        logger.debug(f"Translation fallback for lang {target_lang}: {e}")
-        return text
-
-def get_text(key: str, lang: str, **kwargs) -> str:
-    """Get localized text or auto-translate."""
-    if key in STATIC_TEXTS:
-        if lang in STATIC_TEXTS[key]:
-            return STATIC_TEXTS[key][lang].format(**kwargs)
-        elif "en" in STATIC_TEXTS[key]:
-            base = STATIC_TEXTS[key]["en"].format(**kwargs)
-            return translate_text(base, lang)
-    return ""
-
-def get_rank_and_badge(days: int) -> tuple[str, str]:
-    """Calculates spiritual rank, title and badge emoji."""
-    if days < 4:
-        return "🥉 Shishya (Seeker)", "Beginning of self-mastery. Hold the fort!"
-    elif days < 8:
-        return "🌱 Sadhak (Disciplined)", "First milestone crossed. Mind is stabilizing."
-    elif days < 15:
-        return "🌿 Veerya Rakshak (Energy Preserver)", "Vital energy is circulating into your blood."
-    elif days < 22:
-        return "🔥 Agni Sadhak (Habit Master)", "Old neuro-pathways are burning away."
-    elif days < 31:
-        return "⚡ Ojas Seeker (Transmuter)", "One full solar cycle! Eyes radiate clarity."
-    elif days < 61:
-        return "🛡️ Mahaveer Brahmachari (Indomitable)", "Immense willpower and physical stamina."
-    elif days < 91:
-        return "⚔️ Tapasvi (Sense Conqueror)", "Sensual desires lose their grip over you."
-    elif days < 181:
-        return "👑 Siddha Purusha (Master of Self)", "Mind operates at peak spiritual clarity."
-    elif days < 365:
-        return "🔱 Paramhansa (Divine Yogi)", "Transcended mundane cravings completely."
-    else:
-        return "🕉️ Divya Atman (Enlightened Brahmachari)", "Legendary discipline. A living inspiration!"
+def get_rank_and_badge(days: int, lang: str = "en") -> tuple[str, str]:
+    """Calculates spiritual rank, title and badge emoji in user's language."""
+    return get_rank_and_badge_localized(days, lang)
 
 def format_progress_bar(current_days: int, target_days: int = 30) -> str:
     """Creates a visual progress bar."""
@@ -524,7 +446,7 @@ def format_progress_bar(current_days: int, target_days: int = 30) -> str:
     empty_blocks = total_blocks - filled_blocks
     bar = "█" * filled_blocks + "░" * empty_blocks
     percentage = int(progress * 100)
-    return f"[{bar}] {percentage}% ({current_days}/{target_days} Days)"
+    return f"[{bar}] {percentage}% ({current_days}/{target_days})"
 
 # ==================== TELEGRAM BOT CLIENT ====================
 # Safe session lock cleanup: remove temporary journal and lock files before starting Pyrogram client
@@ -856,90 +778,100 @@ def build_category_menu_keyboard(files: list[dict], category: str) -> InlineKeyb
         ])
 
     keyboard_rows.append([
-        InlineKeyboardButton("🔙 Back to Sanctum", callback_data="cb_home")
+        InlineKeyboardButton(get_text("btn_back_home", lang), callback_data="cb_home")
     ])
     return InlineKeyboardMarkup(keyboard_rows)
 
 # ==================== INLINE KEYBOARDS ====================
 def main_menu_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
-    """Returns the main interactive control panel buttons."""
+    """Returns the main interactive control panel buttons in user's language."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📊 My Streak", callback_data="cb_streak"),
-            InlineKeyboardButton("🏆 Leaderboard", callback_data="cb_leaderboard")
+            InlineKeyboardButton(get_text("btn_my_streak", lang), callback_data="cb_streak"),
+            InlineKeyboardButton(get_text("btn_leaderboard", lang), callback_data="cb_leaderboard")
         ],
         [
-            InlineKeyboardButton("🔄 Log Relapse", callback_data="cb_relapse_prompt"),
-            InlineKeyboardButton("🎯 Challenge Target", callback_data="cb_challenge_menu")
+            InlineKeyboardButton(get_text("btn_relapse", lang), callback_data="cb_relapse_prompt"),
+            InlineKeyboardButton(get_text("btn_challenge", lang), callback_data="cb_challenge_menu")
         ],
         [
-            InlineKeyboardButton("🧘 Mindset & Ojas", callback_data="cb_mindset"),
-            InlineKeyboardButton("📜 Daily Shlokas", callback_data="cb_quotes")
+            InlineKeyboardButton(get_text("btn_mindset", lang), callback_data="cb_mindset"),
+            InlineKeyboardButton(get_text("btn_shlokas", lang), callback_data="cb_quotes")
         ],
         [
-            InlineKeyboardButton("⚔️ Workout & Vyayam", callback_data="cb_workout"),
-            InlineKeyboardButton("🥗 Sattvic Health", callback_data="cb_health")
+            InlineKeyboardButton(get_text("btn_workout", lang), callback_data="cb_workout"),
+            InlineKeyboardButton(get_text("btn_health", lang), callback_data="cb_health")
         ],
         [
-            InlineKeyboardButton("📚 Sacred Books", callback_data="cb_books"),
-            InlineKeyboardButton("🎵 Sacred Songs", callback_data="cb_songs")
+            InlineKeyboardButton(get_text("btn_books", lang), callback_data="cb_books"),
+            InlineKeyboardButton(get_text("btn_songs", lang), callback_data="cb_songs")
         ],
         [
-            InlineKeyboardButton("🌐 Language / भाषा", callback_data="cb_language_menu")
+            InlineKeyboardButton(get_text("btn_language", lang), callback_data="cb_language_menu")
         ]
     ])
 
-def language_selection_keyboard() -> InlineKeyboardMarkup:
+def language_selection_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     """Returns language selection keyboard."""
-    buttons = []
-    row = []
-    for code, info in SUPPORTED_LANGUAGES.items():
-        row.append(InlineKeyboardButton(f"{info['flag']} {info['name']}", callback_data=f"setlang_{code}"))
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    buttons.append([InlineKeyboardButton("🔙 Back to Sanctum", callback_data="cb_home")])
+    buttons = [
+        [
+            InlineKeyboardButton("🇬🇧 English", callback_data="setlang_en"),
+            InlineKeyboardButton("🇮🇳 हिन्दी (Hindi)", callback_data="setlang_hi")
+        ],
+        [
+            InlineKeyboardButton("🇮🇳 ଓଡ଼ିଆ (Odia)", callback_data="setlang_or")
+        ],
+        [
+            InlineKeyboardButton(get_text("btn_back_home", lang), callback_data="cb_home")
+        ]
+    ]
     return InlineKeyboardMarkup(buttons)
 
-def back_home_keyboard() -> InlineKeyboardMarkup:
+def back_home_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 View My Streak", callback_data="cb_streak")],
-        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="cb_home")]
+        [InlineKeyboardButton(get_text("btn_view_streak", lang), callback_data="cb_streak")],
+        [InlineKeyboardButton(get_text("btn_back_home", lang), callback_data="cb_home")]
     ])
 
-def relapse_confirmation_keyboard() -> InlineKeyboardMarkup:
+def streak_action_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(get_text("btn_refresh_streak", lang), callback_data="cb_streak")],
+        [InlineKeyboardButton(get_text("btn_leaderboard", lang), callback_data="cb_leaderboard")],
+        [InlineKeyboardButton(get_text("btn_back_home", lang), callback_data="cb_home")]
+    ])
+
+def relapse_confirmation_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("⚠️ Yes, I Relapsed (Reset)", callback_data="cb_relapse_confirm"),
-            InlineKeyboardButton("🛡️ No, I Stayed Strong!", callback_data="cb_home")
+            InlineKeyboardButton(get_text("btn_relapse_confirm", lang), callback_data="cb_relapse_confirm"),
+            InlineKeyboardButton(get_text("btn_relapse_cancel", lang), callback_data="cb_home")
         ]
     ])
 
-def challenge_keyboard() -> InlineKeyboardMarkup:
+def challenge_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🌱 7 Days (Shankha)", callback_data="setpledge_7"),
-            InlineKeyboardButton("🌿 21 Days (Sankalp)", callback_data="setpledge_21")
+            InlineKeyboardButton(get_text("btn_pledge_7", lang), callback_data="setpledge_7"),
+            InlineKeyboardButton(get_text("btn_pledge_21", lang), callback_data="setpledge_21")
         ],
         [
-            InlineKeyboardButton("🔥 30 Days (Agni)", callback_data="setpledge_30"),
-            InlineKeyboardButton("🛡️ 90 Days (Mahavrata)", callback_data="setpledge_90")
+            InlineKeyboardButton(get_text("btn_pledge_30", lang), callback_data="setpledge_30"),
+            InlineKeyboardButton(get_text("btn_pledge_90", lang), callback_data="setpledge_90")
         ],
         [
-            InlineKeyboardButton("👑 365 Days (Divya Vrata)", callback_data="setpledge_365")
+            InlineKeyboardButton(get_text("btn_pledge_365", lang), callback_data="setpledge_365")
         ],
         [
-            InlineKeyboardButton("🔙 Back", callback_data="cb_home")
+            InlineKeyboardButton(get_text("btn_back", lang), callback_data="cb_home")
         ]
     ])
 
 # ==================== TOPIC CONTENT GENERATORS ====================
-def get_streak_message(user_dict: dict) -> str:
-    user_id = user_dict["user_id"]
+def get_streak_message(user_dict: dict, lang: str = "en") -> str:
     name = user_dict.get("first_name") or "Brahmachari"
     start_dt = datetime.fromisoformat(user_dict["streak_start"])
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     diff = now - start_dt
     
@@ -948,131 +880,51 @@ def get_streak_message(user_dict: dict) -> str:
     minutes = int((diff.total_seconds() % 3600) // 60)
     
     pledge = user_dict.get("pledge_days", 30)
-    rank, rank_desc = get_rank_and_badge(days)
+    rank, rank_desc = get_rank_and_badge_localized(days, lang)
     longest = max(user_dict.get("longest_streak_days", 0), days)
     relapses = user_dict.get("relapses_count", 0)
     progress_bar = format_progress_bar(days, pledge)
+    start_date_str = start_dt.strftime('%d %b %Y, %I:%M %p UTC')
 
-    msg = (
-        f"⚡ **BRAHMACHARYA STREAK TRACKER** ⚡\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 **Brahmachari**: {name}\n"
-        f"⏳ **Live Streak**: **{days} Days, {hours}h {minutes}m**\n"
-        f"🎖️ **Rank**: {rank}\n"
-        f"📝 **Status**: _{rank_desc}_\n\n"
-        f"🎯 **Pledge Goal**: {pledge} Days\n"
-        f"📈 **Progress**: `{progress_bar}`\n\n"
-        f"🏆 **Personal Record**: {longest} Days\n"
-        f"⚠️ **Total Relapses**: {relapses}\n"
-        f"📅 **Started On**: `{start_dt.strftime('%d %b %Y, %I:%M %p UTC')}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💡 *\"The vital fluid (Veerya) when preserved rises up to the brain as Ojas Shakti, providing radiant intelligence and fearlessness.\"* — Swami Sivananda"
-    )
-    return msg
-
-def get_mindset_message() -> str:
-    return (
-        "🧘 **BRAHMACHARYA MINDSET & OJAS TRANSMUTATION** 🧘\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Sexual energy is the most concentrated creative force in the universe. Do not suppress it; **TRANSMUTE** it into intellectual brilliance, physical strength, and spiritual magnetism.\n\n"
-        "🔱 **The 3 Pillars of Mind Control**:\n"
-        "1. **Pranayama (Breath Control)**:\n"
-        "   • *Anulom Vilom (Alternate Nostril)*: 15 mins daily calms the central nervous system.\n"
-        "   • *Kapalabhati & Bhastrika*: Generates internal fire and clears lethargy.\n"
-        "   • *Moola Bandha & Uddiyana Bandha*: Directs the seminal energy upwards toward Sahasrara.\n\n"
-        "2. **The 10-Minute Urge Rule**:\n"
-        "   • When a strong craving hits, do NOT fight it mentally.\n"
-        "   • Immediately drop down and do 25 pushups, or wash your face with ice-cold water.\n"
-        "   • Observe the craving like an ocean wave—it peaks in 10 minutes and dissolves.\n\n"
-        "3. **Drishti Shuddhi (Sight Purification)**:\n"
-        "   • What enters the eyes becomes the thought, and what becomes thought triggers the action.\n"
-        "   • Practice *Trataka* (gazing at a ghee lamp flame for 5 mins) to build razor-sharp focus.\n"
-        "━━━━━━━━━━━━━━━━━━━━━━"
+    return get_text(
+        "streak_tracker",
+        lang,
+        name=name,
+        days=days,
+        hours=hours,
+        minutes=minutes,
+        rank=rank,
+        rank_desc=rank_desc,
+        pledge=pledge,
+        progress_bar=progress_bar,
+        longest=longest,
+        relapses=relapses,
+        start_date=start_date_str
     )
 
-def get_workout_message() -> str:
-    return (
-        "⚔️ **BRAHMACHARI PHYSICAL STRENGTH & VYAYAM GUIDE** ⚔️\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "A weak body cannot sustain powerful Ojas. Build iron endurance with traditional Bharatiya Vyayam:\n\n"
-        "☀️ **Morning Sadhana (4:30 AM - 6:00 AM)**:\n"
-        "1. **Surya Namaskar (12-24 Rounds)**:\n"
-        "   • Complete spinal flexibility, stimulates endocrine glands and activates solar plexus.\n\n"
-        "2. **Desi Dands (Hindu Push-Ups) — 50-100 Reps**:\n"
-        "   • Builds upper body armor, core fortitude, and shoulder strength.\n\n"
-        "3. **Desi Baithaks (Hindu Squats) — 100-200 Reps**:\n"
-        "   • Strengthens legs, pelvic floor, and increases testosterone naturally.\n\n"
-        "4. **Inversions (Shirshasana & Sarvangasana) — 5-10 Mins**:\n"
-        "   • Reverses gravity, nourishes brain capillaries, and pulls energy upwards.\n\n"
-        "💪 *\"You will be nearer to Heaven through football than through the study of the Gita.\"* — Swami Vivekananda"
-    )
+def get_mindset_message(lang: str = "en") -> str:
+    return get_text("mindset_text", lang)
 
-def get_health_message() -> str:
-    return (
-        "🥗 **SATTVIC HEALTH & AYURVEDIC DIET PROTOCOL** 🥗\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Food directly transforms into mind stuff (*Ahara Shuddhau Sattva Shuddhih*).\n\n"
-        "✅ **What to Consume (Sattvic & Ojas-Building)**:\n"
-        "• Soaked Almonds, Walnuts, and Munakka (Dry Grapes)\n"
-        "• Pure A2 Cow Milk with Ashwagandha & Cardamom\n"
-        "• Fresh seasonal fruits (Apples, Pomegranates, Bananas)\n"
-        "• Ghee, Green vegetables, Moong Dal, Sprouts\n"
-        "• Ample hydration (Copper vessel water)\n\n"
-        "🚫 **What to Strictly Eliminate (Tamasic & Rajasic)**:\n"
-        "• Excess chilies, garlic, deep-fried junk food\n"
-        "• Artificial sugars, energy drinks, and alcohol/smoking\n"
-        "• Late-night eating (dinner must be 3 hours before sleep)\n\n"
-        "❄️ **Cold Shower Therapy (Snana)**:\n"
-        "• Cold water bath immediately cools the genital nervous center and resets dopamine receptors."
-    )
+def get_workout_message(lang: str = "en") -> str:
+    return get_text("workout_text", lang)
 
-def get_quotes_message() -> str:
-    return (
-        "📜 **SACRED SHLOKAS & MOTIVATIONAL WISDOM** 📜\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📖 **Bhagavad Gita (Chapter 2, Verse 62-63)**:\n"
-        "ध्यायतो विषयान्पुंसः सङ्गस्तेषूपजायते।\n"
-        "सङ्गात्संजायते कामः कामात्क्रोधोऽभिजायते॥\n"
-        "_\"Contemplating the objects of the senses leads to attachment; from attachment arises lust, and from unfulfilled lust arises anger.\"_\n\n"
-        "📖 **Swami Vivekananda**:\n"
-        "_\"Every boy should be trained to practice complete Brahmacharya; only then can there be built up in him the tremendous power of head and heart.\"_\n\n"
-        "📖 **Patanjali Yoga Sutras (2.38)**:\n"
-        "ब्रह्मचर्यप्रतिष्ठायां वीर्यलाभः॥\n"
-        "_\"Upon establishment in Brahmacharya, unyielding vitality and divine potency are acquired.\"_\n\n"
-        "📖 **Chanakya Neeti**:\n"
-        "_\"He who controls his senses rules over the entire kingdom of destiny.\"_\n"
-        "━━━━━━━━━━━━━━━━━━━━━━"
-    )
+def get_health_message(lang: str = "en") -> str:
+    return get_text("health_text", lang)
 
-def get_books_message() -> str:
-    return (
-        "📚 **SACRED BRAHMACHARYA LITERATURE** 📚\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Deepen your understanding with these essential classic scriptures:\n\n"
-        "1. 📖 **The Practice of Brahmacharya** — *Swami Sivananda*\n"
-        "   The ultimate encyclopedia on celibacy, science of sex sublimation, and mind control.\n\n"
-        "2. 📖 **Raja Yoga** — *Swami Vivekananda*\n"
-        "   Master the mechanics of thought control, concentration, and Kundalini awakening.\n\n"
-        "3. 📖 **Brahmacharya (Self-Restraint)** — *Mahatma Gandhi*\n"
-        "   Practical experiments in truth, dietetics, and conquering sensory habits.\n\n"
-        "4. 📖 **Autobiography of a Yogi** — *Paramahansa Yogananda*\n"
-        "   Life transforming spiritual classic on Kriya Yoga and cosmic consciousness.\n\n"
-        "5. 📖 **Bhagavad Gita As It Is** — *Lord Sri Krishna's timeless wisdom*."
-    )
+def get_quotes_message(lang: str = "en") -> str:
+    return get_text("quotes_text", lang)
 
-def get_songs_message() -> str:
-    return (
-        "🎵 **SACRED CHANTS, BHAJANS & VEDIC AUDIO** 🎵\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Sound vibrations (*Shabda Brahman*) immediately elevate your frequency and calm restless neural impulses.\n\n"
-        "🔱 **Recommended Tracks for Ojas & Mental Purity**:\n"
-        "• **Shiva Tandava Stotram** — Awakens warrior energy and supreme focus.\n"
-        "• **Hanuman Chalisa** — Destroys sensual cravings and invokes unbreakable fortitude.\n"
-        "• **Mahamrityunjaya Mantra** — Cellular healing and nervous system tranquility.\n"
-        "• **Gayatri Mantra (108 Japa)** — Illuminates intellect and strengthens discriminative willpower.\n"
-        "• **Flute / Om 432Hz Meditation** — Facilitates restful sleep and eliminates late-night insomnia.\n"
-        "━━━━━━━━━━━━━━━━━━━━━━"
-    )
+def get_books_message(lang: str = "en") -> str:
+    return get_text("books_header", lang)
+
+def get_songs_message(lang: str = "en") -> str:
+    return get_text("songs_header", lang)
+
+def get_motivation_message(lang: str = "en") -> str:
+    return get_text("motivation_text", lang)
+
+def get_help_message(lang: str = "en") -> str:
+    return get_text("help_text", lang)
 
 # ==================== BOT HANDLERS ====================
 
@@ -1105,21 +957,49 @@ async def start_command(client: Client, message: Message):
         await log_to_database_channel(client, log_text)
 
     # Greeting Message
-    greeting_text = (
-        f"Ram Ram Brahmachari {user.first_name} 🙏\n\n"
-        f"Welcome to the sacred **Brahmacharya & NoFap Sanctum**.\n"
-        f"Here you master sensory control, cultivate **Ojas Shakti**, and build an indomitable character.\n\n"
-        f"⚡ **Your Live Journey Status**:\n"
-        f"{get_streak_message(user_data)}\n\n"
-        f"👇 Select an option below to guide your sadhana:"
+    greeting_text = get_text(
+        "start_greeting",
+        lang,
+        name=user.first_name,
+        streak_info=get_streak_message(user_data, lang)
     )
-
-    if lang != "en":
-        greeting_text = translate_text(greeting_text, lang)
 
     await message.reply_text(
         text=greeting_text,
         reply_markup=main_menu_keyboard(lang),
+        disable_web_page_preview=True
+    )
+
+@app.on_message(filters.command(["menu"]))
+async def menu_command(client: Client, message: Message):
+    user = message.from_user
+    if not user:
+        return
+    db.add_or_update_user(user.id, user.first_name, user.last_name, user.username)
+    user_data = db.get_user(user.id)
+    lang = user_data.get("language", "en") if user_data else "en"
+    text = get_text(
+        "start_greeting",
+        lang,
+        name=user.first_name,
+        streak_info=get_streak_message(user_data, lang)
+    )
+    await message.reply_text(
+        text=text,
+        reply_markup=main_menu_keyboard(lang),
+        disable_web_page_preview=True
+    )
+
+@app.on_message(filters.command(["help"]))
+async def help_command(client: Client, message: Message):
+    user = message.from_user
+    if not user:
+        return
+    user_data = db.get_user(user.id)
+    lang = user_data.get("language", "en") if user_data else "en"
+    await message.reply_text(
+        text=get_help_message(lang),
+        reply_markup=back_home_keyboard(lang),
         disable_web_page_preview=True
     )
 
@@ -1130,44 +1010,40 @@ async def streak_command(client: Client, message: Message):
         return
     db.add_or_update_user(user.id, user.first_name, user.last_name, user.username)
     user_data = db.get_user(user.id)
-    lang = user_data.get("language", "en")
+    lang = user_data.get("language", "en") if user_data else "en"
 
-    msg = get_streak_message(user_data)
-    if lang != "en":
-        msg = translate_text(msg, lang)
-
+    msg = get_streak_message(user_data, lang)
     await message.reply_text(
         text=msg,
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Refresh Streak", callback_data="cb_streak")],
-            [InlineKeyboardButton("🏆 Leaderboard", callback_data="cb_leaderboard")],
-            [InlineKeyboardButton("🔙 Main Menu", callback_data="cb_home")]
-        ]),
+        reply_markup=streak_action_keyboard(lang),
         disable_web_page_preview=True
     )
 
 @app.on_message(filters.command("leaderboard"))
 async def leaderboard_command(client: Client, message: Message):
+    user_data = db.get_user(message.from_user.id) if message.from_user else None
+    lang = user_data.get("language", "en") if user_data else "en"
     top_list = db.get_top_leaderboard(10)
     if not top_list:
-        await message.reply_text("🏆 No streaks recorded yet. Be the first!")
+        await message.reply_text(get_text("leaderboard_empty", lang))
         return
 
-    text = "🏆 **BRAHMACHARYA LEADERBOARD (TOP SADHAKS)** 🏆\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    text = f"{get_text('leaderboard_header', lang)}\n"
     medals = ["🥇", "🥈", "🥉", "🎖️", "🎖️", "🎖️", "🎖️", "🎖️", "🎖️", "🎖️"]
+    days_label = "दिन" if lang == "hi" else ("ଦିନ" if lang == "or" else "Days")
 
     for idx, member in enumerate(top_list):
         medal = medals[idx] if idx < len(medals) else "🎖️"
         uname = f"@{member['username']}" if member['username'] else member['name']
-        rank_badge, _ = get_rank_and_badge(member['days'])
+        rank_badge, _ = get_rank_and_badge_localized(member['days'], lang)
         badge_icon = rank_badge.split()[0]
-        text += f"{medal} **{idx+1}. {uname}** — **{member['days']} Days** ({badge_icon})\n"
+        text += f"{medal} **{idx+1}. {uname}** — **{member['days']} {days_label}** ({badge_icon})\n"
 
-    text += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 *\"Purity is strength. Keep moving forward!\"*"
+    text += f"\n━━━━━━━━━━━━━━━━━━━━━━\n{get_text('leaderboard_footer', lang)}"
 
     await message.reply_text(
         text=text,
-        reply_markup=back_home_keyboard(),
+        reply_markup=back_home_keyboard(lang),
         disable_web_page_preview=True
     )
 
@@ -1176,21 +1052,21 @@ async def relapse_command(client: Client, message: Message):
     user = message.from_user
     if not user:
         return
-    prompt_text = (
-        "⚠️ **RELAPSE CONFIRMATION** ⚠️\n\n"
-        "Brother, are you sure you want to log a relapse and reset your streak?\n\n"
-        "Remember: A setback is only permanent if you give up. Honesty is the foundation of true character."
-    )
+    user_data = db.get_user(user.id)
+    lang = user_data.get("language", "en") if user_data else "en"
+    prompt_text = get_text("relapse_prompt", lang)
     await message.reply_text(
         text=prompt_text,
-        reply_markup=relapse_confirmation_keyboard()
+        reply_markup=relapse_confirmation_keyboard(lang)
     )
 
 @app.on_message(filters.command("language"))
 async def language_command(client: Client, message: Message):
+    user_data = db.get_user(message.from_user.id) if message.from_user else None
+    lang = user_data.get("language", "en") if user_data else "en"
     await message.reply_text(
-        text="🌐 **Choose Your Preferred Language / अपनी भाषा चुनें**:\n\nSelect your language for all bot responses and guides:",
-        reply_markup=language_selection_keyboard()
+        text=get_text("language_menu_title", lang),
+        reply_markup=language_selection_keyboard(lang)
     )
 
 # ==================== INDEXING HELPERS ====================
@@ -1587,10 +1463,8 @@ async def workout_command(client: Client, message: Message):
         return
     user_data = db.get_user(message.from_user.id)
     lang = user_data.get("language", "en") if user_data else "en"
-    msg = get_workout_message()
-    if lang != "en":
-        msg = translate_text(msg, lang)
-    await message.reply_text(msg, reply_markup=back_home_keyboard())
+    msg = get_workout_message(lang)
+    await message.reply_text(msg, reply_markup=back_home_keyboard(lang))
     files_sent = await send_category_media(client, message.chat.id, "workout")
     if files_sent > 0:
         await message.reply_text(f"⚔️ Delivered **{files_sent}** workout media file(s) from our archive above! 👆")
@@ -1601,10 +1475,8 @@ async def health_command(client: Client, message: Message):
         return
     user_data = db.get_user(message.from_user.id)
     lang = user_data.get("language", "en") if user_data else "en"
-    msg = get_health_message()
-    if lang != "en":
-        msg = translate_text(msg, lang)
-    await message.reply_text(msg, reply_markup=back_home_keyboard())
+    msg = get_health_message(lang)
+    await message.reply_text(msg, reply_markup=back_home_keyboard(lang))
     files_sent = await send_category_media(client, message.chat.id, "health")
     if files_sent > 0:
         await message.reply_text(f"🥗 Delivered **{files_sent}** diet & health media file(s) from our archive above! 👆")
@@ -1615,10 +1487,8 @@ async def mindset_command(client: Client, message: Message):
         return
     user_data = db.get_user(message.from_user.id)
     lang = user_data.get("language", "en") if user_data else "en"
-    msg = get_mindset_message()
-    if lang != "en":
-        msg = translate_text(msg, lang)
-    await message.reply_text(msg, reply_markup=back_home_keyboard())
+    msg = get_mindset_message(lang)
+    await message.reply_text(msg, reply_markup=back_home_keyboard(lang))
 
 @app.on_message(filters.command(["quotes", "quote"]))
 async def quotes_command(client: Client, message: Message):
@@ -1626,10 +1496,8 @@ async def quotes_command(client: Client, message: Message):
         return
     user_data = db.get_user(message.from_user.id)
     lang = user_data.get("language", "en") if user_data else "en"
-    msg = get_quotes_message()
-    if lang != "en":
-        msg = translate_text(msg, lang)
-    await message.reply_text(msg, reply_markup=back_home_keyboard())
+    msg = get_quotes_message(lang)
+    await message.reply_text(msg, reply_markup=back_home_keyboard(lang))
 
 @app.on_message(filters.command(["books", "book"]))
 async def books_command(client: Client, message: Message):
@@ -1644,20 +1512,11 @@ async def books_command(client: Client, message: Message):
         files = await scan_and_get_category_files(client, "books")
 
     if files:
-        text = (
-            "📚 **SACRED BRAHMACHARYA BOOKS** 📚\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "The following spiritual texts and guides are available.\n\n"
-            "👇 **Tap any book below to receive it directly:**"
-        )
-        if lang != "en":
-            text = translate_text(text, lang)
-        await message.reply_text(text, reply_markup=build_category_menu_keyboard(files, "books"))
+        text = get_text("books_header", lang)
+        await message.reply_text(text, reply_markup=build_category_menu_keyboard(files, "books", lang))
     else:
-        msg = get_books_message()
-        if lang != "en":
-            msg = translate_text(msg, lang)
-        await message.reply_text(msg, reply_markup=back_home_keyboard())
+        msg = get_books_message(lang)
+        await message.reply_text(msg, reply_markup=back_home_keyboard(lang))
 
 @app.on_message(filters.command(["songs", "song"]))
 async def songs_command(client: Client, message: Message):
@@ -1672,48 +1531,28 @@ async def songs_command(client: Client, message: Message):
         files = await scan_and_get_category_files(client, "songs")
 
     if files:
-        text = (
-            "🎵 **SACRED AUDIO & CHANTS** 🎵\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "The following high-vibration chants and tracks are available.\n\n"
-            "👇 **Tap any track below to receive it directly:**"
-        )
-        if lang != "en":
-            text = translate_text(text, lang)
-        await message.reply_text(text, reply_markup=build_category_menu_keyboard(files, "songs"))
+        text = get_text("songs_header", lang)
+        await message.reply_text(text, reply_markup=build_category_menu_keyboard(files, "songs", lang))
     else:
-        msg = get_songs_message()
-        if lang != "en":
-            msg = translate_text(msg, lang)
-        await message.reply_text(msg, reply_markup=back_home_keyboard())
+        msg = get_songs_message(lang)
+        await message.reply_text(msg, reply_markup=back_home_keyboard(lang))
 
 @app.on_message(filters.command("challenge"))
 async def challenge_command(client: Client, message: Message):
     user_data = db.get_user(message.from_user.id)
+    lang = user_data.get("language", "en") if user_data else "en"
     pledge = user_data.get("pledge_days", 30) if user_data else 30
     await message.reply_text(
-        f"🎯 **SELECT YOUR SANKALP / PLEDGE TARGET** 🎯\n\n"
-        f"Your current target: **{pledge} Days**\n\n"
-        f"Choose a milestone below to set your sacred vow:",
-        reply_markup=challenge_keyboard()
+        get_text("challenge_text", lang, pledge=pledge),
+        reply_markup=challenge_keyboard(lang)
     )
 
 @app.on_message(filters.command("motivation"))
 async def motivation_command(client: Client, message: Message):
     user_data = db.get_user(message.from_user.id)
     lang = user_data.get("language", "en") if user_data else "en"
-    msg = (
-        "⚡ **INSTANT MOTIVATION & VICTORY MINDSET** ⚡\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🔥 *\"Do not look back, look forward! Infinite energy, infinite enthusiasm, infinite daring, and infinite patience — then alone can great things be accomplished!\"* — Swami Vivekananda\n\n"
-        "🛡️ **Remember Why You Began**:\n"
-        "• 5 seconds of cheap pixel dopamine vs. a lifetime of supreme confidence, mental clarity, and spiritual brilliance.\n"
-        "• Every urge you overcome directly elevates your testosterone, sharpens your eyesight, and strengthens your nervous system.\n"
-        "• You are not a slave to biological impulses. You are the master of your destiny."
-    )
-    if lang != "en":
-        msg = translate_text(msg, lang)
-    await message.reply_text(msg, reply_markup=back_home_keyboard())
+    msg = get_motivation_message(lang)
+    await message.reply_text(msg, reply_markup=back_home_keyboard(lang))
 
 # ==================== ADMIN COMMANDS ====================
 
@@ -1887,15 +1726,12 @@ async def handle_callback_query(client: Client, callback_query: CallbackQuery):
     lang = user_data.get("language", "en") if user_data else "en"
 
     if data == "cb_home":
-        greeting_text = (
-            f"Ram Ram Brahmachari {user.first_name} 🙏\n\n"
-            f"Welcome to the sacred **Brahmacharya & NoFap Sanctum**.\n\n"
-            f"⚡ **Your Live Journey Status**:\n"
-            f"{get_streak_message(user_data)}\n\n"
-            f"👇 Select an option below:"
+        greeting_text = get_text(
+            "start_greeting",
+            lang,
+            name=user.first_name,
+            streak_info=get_streak_message(user_data, lang)
         )
-        if lang != "en":
-            greeting_text = translate_text(greeting_text, lang)
         await callback_query.edit_message_text(
             text=greeting_text,
             reply_markup=main_menu_keyboard(lang),
@@ -1903,45 +1739,46 @@ async def handle_callback_query(client: Client, callback_query: CallbackQuery):
         )
 
     elif data == "cb_streak":
-        msg = get_streak_message(user_data)
-        if lang != "en":
-            msg = translate_text(msg, lang)
+        msg = get_streak_message(user_data, lang)
         await callback_query.edit_message_text(
             text=msg,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 Refresh", callback_data="cb_streak")],
-                [InlineKeyboardButton("🏆 Leaderboard", callback_data="cb_leaderboard")],
-                [InlineKeyboardButton("🔙 Main Menu", callback_data="cb_home")]
-            ]),
+            reply_markup=streak_action_keyboard(lang),
             disable_web_page_preview=True
         )
 
     elif data == "cb_leaderboard":
         top_list = db.get_top_leaderboard(10)
-        text = "🏆 **BRAHMACHARYA LEADERBOARD (TOP SADHAKS)** 🏆\n━━━━━━━━━━━━━━━━━━━━━━\n"
+        if not top_list:
+            await callback_query.edit_message_text(
+                text=get_text("leaderboard_empty", lang),
+                reply_markup=back_home_keyboard(lang),
+                disable_web_page_preview=True
+            )
+            return
+
+        text = f"{get_text('leaderboard_header', lang)}\n"
         medals = ["🥇", "🥈", "🥉", "🎖️", "🎖️", "🎖️", "🎖️", "🎖️", "🎖️", "🎖️"]
+        days_label = "दिन" if lang == "hi" else ("ଦିନ" if lang == "or" else "Days")
+
         for idx, member in enumerate(top_list):
             medal = medals[idx] if idx < len(medals) else "🎖️"
             uname = f"@{member['username']}" if member['username'] else member['name']
-            rank_badge, _ = get_rank_and_badge(member['days'])
+            rank_badge, _ = get_rank_and_badge_localized(member['days'], lang)
             badge_icon = rank_badge.split()[0]
-            text += f"{medal} **{idx+1}. {uname}** — **{member['days']} Days** ({badge_icon})\n"
-        text += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 *\"Purity is strength. Keep moving forward!\"*"
+            text += f"{medal} **{idx+1}. {uname}** — **{member['days']} {days_label}** ({badge_icon})\n"
+
+        text += f"\n━━━━━━━━━━━━━━━━━━━━━━\n{get_text('leaderboard_footer', lang)}"
         await callback_query.edit_message_text(
             text=text,
-            reply_markup=back_home_keyboard(),
+            reply_markup=back_home_keyboard(lang),
             disable_web_page_preview=True
         )
 
     elif data == "cb_relapse_prompt":
-        prompt_text = (
-            "⚠️ **RELAPSE CONFIRMATION** ⚠️\n\n"
-            "Brother, are you sure you want to log a relapse and reset your streak?\n\n"
-            "Remember: A setback is only a learning curve if you rise immediately."
-        )
+        prompt_text = get_text("relapse_prompt", lang)
         await callback_query.edit_message_text(
             text=prompt_text,
-            reply_markup=relapse_confirmation_keyboard()
+            reply_markup=relapse_confirmation_keyboard(lang)
         )
 
     elif data == "cb_relapse_confirm":
@@ -1960,121 +1797,96 @@ async def handle_callback_query(client: Client, callback_query: CallbackQuery):
         )
         await log_to_database_channel(client, alert_msg)
 
-        recovery_msg = (
-            f"🔄 **STREAK RESET TO DAY 0** 🔄\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"Previous Streak: **{ended_days} Days**\n\n"
-            f"🙏 **Do not despair!** Rise immediately:\n"
-            f"1. Take a cold shower right now.\n"
-            f"2. Perform 10 minutes of Anulom Vilom.\n"
-            f"3. Note down the trigger that caused this slip, and destroy that habit loop.\n\n"
-            f"🔥 *\"Arise, awake, and stop not till the goal is reached!\"* — Swami Vivekananda"
-        )
-        if lang != "en":
-            recovery_msg = translate_text(recovery_msg, lang)
-
+        recovery_msg = get_text("relapse_reset_recovery", lang, ended_days=ended_days)
         await callback_query.edit_message_text(
             text=recovery_msg,
-            reply_markup=back_home_keyboard()
+            reply_markup=back_home_keyboard(lang)
         )
 
     elif data == "cb_language_menu":
         await callback_query.edit_message_text(
-            text="🌐 **Choose Your Preferred Language / अपनी भाषा चुनें**:\n\nSelect your language below:",
-            reply_markup=language_selection_keyboard()
+            text=get_text("language_menu_title", lang),
+            reply_markup=language_selection_keyboard(lang)
         )
 
     elif data.startswith("setlang_"):
         selected_lang = data.split("_", 1)[1]
         db.set_language(user.id, selected_lang)
         lang_info = SUPPORTED_LANGUAGES.get(selected_lang, {"name": selected_lang, "flag": "🌐"})
-        confirm_text = f"✅ Language updated to **{lang_info['flag']} {lang_info['name']}**!"
-        if selected_lang != "en":
-            confirm_text = translate_text(confirm_text, selected_lang)
-        await callback_query.answer(f"Language set to {lang_info['name']}")
+        confirm_text = get_text("language_updated", selected_lang, lang_name=f"{lang_info['flag']} {lang_info['name']}")
+        await callback_query.answer(f"{lang_info['flag']} {lang_info['name']}")
+
+        # Re-fetch user_data and immediately show full menu in newly selected language!
+        user_data = db.get_user(user.id)
+        menu_text = (
+            f"{confirm_text}\n\n" +
+            get_text(
+                "start_greeting",
+                selected_lang,
+                name=user.first_name,
+                streak_info=get_streak_message(user_data, selected_lang)
+            )
+        )
         await callback_query.edit_message_text(
-            text=confirm_text,
-            reply_markup=back_home_keyboard()
+            text=menu_text,
+            reply_markup=main_menu_keyboard(selected_lang),
+            disable_web_page_preview=True
         )
 
     elif data == "cb_challenge_menu":
+        pledge = user_data.get("pledge_days", 30) if user_data else 30
         await callback_query.edit_message_text(
-            text="🎯 **CHOOSE YOUR SANKALP / PLEDGE TARGET**:\n\nSelect your milestone goal:",
-            reply_markup=challenge_keyboard()
+            text=get_text("challenge_text", lang, pledge=pledge),
+            reply_markup=challenge_keyboard(lang)
         )
 
     elif data.startswith("setpledge_"):
         days = int(data.split("_")[1])
         db.set_pledge(user.id, days)
-        await callback_query.answer(f"🎯 Target set to {days} Days!")
+        confirm_note = "Target set" if lang == "en" else ("लक्ष्य निर्धारित" if lang == "hi" else "ଲକ୍ଷ୍ୟ ସ୍ଥିର ହେଲା")
+        await callback_query.answer(f"🎯 {confirm_note}: {days}")
         await callback_query.edit_message_text(
-            text=f"✅ **Sankalp Confirmed!**\n\nYour target pledge has been updated to **{days} Days**.\nStay focused, disciplined, and steadfast on the path of Brahmacharya! 🕉️",
-            reply_markup=back_home_keyboard()
+            text=get_text("challenge_confirmed", lang, days=days),
+            reply_markup=back_home_keyboard(lang)
         )
 
     elif data == "cb_mindset":
-        msg = get_mindset_message()
-        if lang != "en":
-            msg = translate_text(msg, lang)
-        await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard())
+        msg = get_mindset_message(lang)
+        await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard(lang))
 
     elif data == "cb_workout":
-        msg = get_workout_message()
-        if lang != "en":
-            msg = translate_text(msg, lang)
-        await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard())
+        msg = get_workout_message(lang)
+        await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard(lang))
 
     elif data == "cb_health":
-        msg = get_health_message()
-        if lang != "en":
-            msg = translate_text(msg, lang)
-        await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard())
+        msg = get_health_message(lang)
+        await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard(lang))
 
     elif data == "cb_quotes":
-        msg = get_quotes_message()
-        if lang != "en":
-            msg = translate_text(msg, lang)
-        await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard())
+        msg = get_quotes_message(lang)
+        await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard(lang))
 
     elif data == "cb_books":
         files = db.get_category_media("books")
         if not files:
             files = await scan_and_get_category_files(client, "books")
         if files:
-            text = (
-                "📚 **SACRED BRAHMACHARYA BOOKS** 📚\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "The following spiritual texts and guides are available.\n\n"
-                "👇 **Tap any book below to receive it directly:**"
-            )
-            if lang != "en":
-                text = translate_text(text, lang)
-            await callback_query.edit_message_text(text=text, reply_markup=build_category_menu_keyboard(files, "books"))
+            text = get_text("books_header", lang)
+            await callback_query.edit_message_text(text=text, reply_markup=build_category_menu_keyboard(files, "books", lang))
         else:
-            msg = get_books_message()
-            if lang != "en":
-                msg = translate_text(msg, lang)
-            await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard())
+            msg = get_books_message(lang)
+            await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard(lang))
 
     elif data == "cb_songs":
         files = db.get_category_media("songs")
         if not files:
             files = await scan_and_get_category_files(client, "songs")
         if files:
-            text = (
-                "🎵 **SACRED AUDIO & CHANTS** 🎵\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "The following high-vibration chants and tracks are available.\n\n"
-                "👇 **Tap any track below to receive it directly:**"
-            )
-            if lang != "en":
-                text = translate_text(text, lang)
-            await callback_query.edit_message_text(text=text, reply_markup=build_category_menu_keyboard(files, "songs"))
+            text = get_text("songs_header", lang)
+            await callback_query.edit_message_text(text=text, reply_markup=build_category_menu_keyboard(files, "songs", lang))
         else:
-            msg = get_songs_message()
-            if lang != "en":
-                msg = translate_text(msg, lang)
-            await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard())
+            msg = get_songs_message(lang)
+            await callback_query.edit_message_text(text=msg, reply_markup=back_home_keyboard(lang))
 
     elif data.startswith("cb_dl_"):
         try:
