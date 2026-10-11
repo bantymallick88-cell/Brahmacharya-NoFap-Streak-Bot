@@ -9,3 +9,7 @@ env/
 venv/
 *.session
 *.session-journal
+*.db-journal
+*.db-shm
+*.db-wal
+
