@@ -39,8 +39,9 @@ BOT_TOKEN = "8829083195:AAGbeSFojihT6R0V8Pi-pUYWui__e6QINW8"
 API_ID = 36971153
 API_HASH = "e5e4c9c88d0c5c2654d8fbe985523c9c"
 OWNER_ID = int(os.getenv("OWNER_ID", "5650859707"))
-DATABASE_CHANNEL_ID = int(os.getenv("DATABASE_CHANNEL_ID", "-5353068930"))
-DATABASE_GROUP_ID = int(os.getenv("DATABASE_GROUP_ID", "-1004440598458"))
+DB_CHANNEL_ID = int(os.getenv("DB_CHANNEL_ID", "-1004440598458"))
+DATABASE_CHANNEL_ID = int(os.getenv("DATABASE_CHANNEL_ID", str(DB_CHANNEL_ID)))
+DATABASE_GROUP_ID = int(os.getenv("DATABASE_GROUP_ID", str(DB_CHANNEL_ID)))
 PORT = int(os.getenv("PORT", "8080"))
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "brahmacharya.db")
 
@@ -530,7 +531,7 @@ app = Client("brahmacharya_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT
 def get_channel_peers():
     """Returns possible peer representations for database channel & group."""
     peers = set()
-    for raw_id in [DATABASE_CHANNEL_ID, DATABASE_GROUP_ID]:
+    for raw_id in [DB_CHANNEL_ID, DATABASE_CHANNEL_ID, DATABASE_GROUP_ID, -1004440598458, -5353068930]:
         raw = str(raw_id).strip()
         digits = raw.lstrip("-")
         for base in [raw, digits]:
@@ -1207,16 +1208,80 @@ async def try_index_replied_media(client: Client, message: Message, category: st
     )
     return True
 
+def classify_message_media(msg) -> tuple[str, str, str, str, str]:
+    """
+    Classifies a message into:
+      - 'book' for PDFs / Documents
+      - 'song' for Audio / MP3 / Voice
+      - 'quote' for Photos / Images
+    Returns: (category, file_id, file_name, file_type, caption)
+    """
+    if not msg:
+        return "", "", "", "", ""
+
+    caption = msg.caption or ""
+    file_id = ""
+    file_name = ""
+    file_type = ""
+    category = ""
+
+    if msg.photo:
+        file_type = "photo"
+        file_id = getattr(msg.photo, "file_id", "")
+        file_name = f"quote_{msg.id}.jpg"
+        category = "quote"
+    elif msg.audio:
+        file_type = "audio"
+        file_id = getattr(msg.audio, "file_id", "")
+        file_name = getattr(msg.audio, "file_name", "") or getattr(msg.audio, "title", "") or f"song_{msg.id}.mp3"
+        category = "song"
+    elif msg.voice:
+        file_type = "voice"
+        file_id = getattr(msg.voice, "file_id", "")
+        file_name = f"voice_{msg.id}.ogg"
+        category = "song"
+    elif msg.document:
+        doc = msg.document
+        fname = getattr(doc, "file_name", "") or ""
+        mime = (getattr(doc, "mime_type", "") or "").lower()
+        fname_lower = fname.lower()
+        file_id = getattr(doc, "file_id", "")
+
+        if fname_lower.endswith((".mp3", ".m4a", ".wav", ".aac", ".ogg", ".opus", ".flac", ".wma")) or "audio" in mime:
+            file_type = "audio"
+            file_name = fname or f"song_{msg.id}.mp3"
+            category = "song"
+        elif fname_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp")) or "image" in mime:
+            file_type = "photo"
+            file_name = fname or f"quote_{msg.id}.jpg"
+            category = "quote"
+        else:
+            file_type = "document"
+            file_name = fname or f"book_{msg.id}.pdf"
+            category = "book"
+
+    # Respect explicit caption hashtag/slash command if specified
+    if caption:
+        cap_lower = caption.lower()
+        if "#quote" in cap_lower or "/quote" in cap_lower:
+            category = "quote"
+        elif "#song" in cap_lower or "/song" in cap_lower:
+            category = "song"
+        elif "#book" in cap_lower or "/book" in cap_lower:
+            category = "book"
+
+    return category, file_id, file_name, file_type, caption
+
 async def index_chat_media(client: Client, message: Message, category_arg: str = None):
     """
-    Performs category-based indexing:
-    1. If owner replies to a batch of messages with /index [book|song|...],
-       fetches and indexes all messages in the range between replied message and command message.
-    2. If no reply, scans recent chat history of the target database group / channel.
-    3. Category Filter:
-       - 'book' / 'books': indexes all PDFs, EPUBs, and documents into local SQLite DB under category = 'book'.
-       - 'song' / 'songs': indexes all MP3s, Audio, and Voice files into local SQLite DB under category = 'song'.
-       - Plain /index (None): indexes all files without filtering category.
+    Active History Scanning for DB_CHANNEL_ID (-1004440598458):
+    - When owner sends /index book, /index song, or /index quote in -1004440598458:
+      - Scan all messages in DB_CHANNEL_ID (-1004440598458).
+      - Store files in SQLite DB with category:
+        * /index book -> PDFs/Documents -> category = 'book'
+        * /index song -> Audio/MP3 -> category = 'song'
+        * /index quote -> Photos/Images -> category = 'quote'
+      - Send reply with exact count: "✅ Indexed X files into database!"
     """
     cat_filter = None
     if category_arg:
@@ -1225,40 +1290,27 @@ async def index_chat_media(client: Client, message: Message, category_arg: str =
             cat_filter = "book"
         elif c in ["song", "songs"]:
             cat_filter = "song"
+        elif c in ["quote", "quotes"]:
+            cat_filter = "quote"
         else:
-            cat_filter = CATEGORY_COMMANDS.get(c, c)
+            cat_filter = c
 
-    # Determine target peer to scan
-    target_chat = None
-    if message.chat and message.chat.id in get_channel_peers():
-        target_chat = message.chat.id
-    elif message.sender_chat and message.sender_chat.id in get_channel_peers():
-        target_chat = message.sender_chat.id
-    else:
-        target_chat = DATABASE_GROUP_ID if DATABASE_GROUP_ID else DATABASE_CHANNEL_ID
+    target_chat = DB_CHANNEL_ID
 
-    cat_label = f"category = '{cat_filter}'" if cat_filter else "all files (unfiltered)"
-    status_text = f"⏳ **Starting Indexing** for {cat_label}...\nPlease wait..."
     status_msg = None
     try:
-        status_msg = await message.reply_text(status_text)
+        status_msg = await message.reply_text(f"⏳ Scanning and indexing files in {target_chat}...")
     except Exception as e:
-        logger.debug(f"Could not send reply status: {e}")
-        try:
-            status_msg = await client.send_message(chat_id=message.chat.id, text=status_text)
-        except Exception:
-            pass
+        logger.debug(f"Could not send starting message: {e}")
 
     messages_to_process = []
 
-    # Check if replied to a batch of messages
+    # Check if owner replied to a batch of messages
     if message.reply_to_message:
         batch_chat = message.chat.id if message.chat else target_chat
         start_id = min(message.reply_to_message.id, message.id)
         end_id = max(message.reply_to_message.id, message.id)
         msg_ids = list(range(start_id, end_id + 1))
-        logger.info(f"Indexing batch range {start_id} to {end_id} ({len(msg_ids)} message IDs) in chat {batch_chat}")
-
         for i in range(0, len(msg_ids), 200):
             chunk = msg_ids[i:i + 200]
             try:
@@ -1268,19 +1320,18 @@ async def index_chat_media(client: Client, message: Message, category_arg: str =
                 elif fetched:
                     messages_to_process.append(fetched)
             except Exception as e:
-                logger.warning(f"Error fetching batch chunk {chunk[0]}-{chunk[-1]}: {e}")
+                logger.warning(f"Error fetching chunk {chunk[0]}-{chunk[-1]}: {e}")
     else:
-        # Scan chat history of target_chat
-        logger.info(f"Scanning chat history of target {target_chat} for category {cat_filter}...")
+        # Scan all messages in DB_CHANNEL_ID (-1004440598458)
         try:
-            async for m in client.get_chat_history(target_chat, limit=2000):
+            async for m in client.get_chat_history(target_chat):
                 messages_to_process.append(m)
         except Exception as e:
-            logger.warning(f"Error getting history for target {target_chat}: {e}")
+            logger.warning(f"Error getting history from {target_chat}: {e}")
             for peer in get_channel_peers():
                 if peer != target_chat:
                     try:
-                        async for m in client.get_chat_history(peer, limit=2000):
+                        async for m in client.get_chat_history(peer):
                             messages_to_process.append(m)
                         if messages_to_process:
                             target_chat = peer
@@ -1288,170 +1339,74 @@ async def index_chat_media(client: Client, message: Message, category_arg: str =
                     except Exception:
                         pass
 
-    # Filter None messages and sort chronologically
-    messages_to_process = [m for m in messages_to_process if m is not None]
-    messages_to_process.sort(key=lambda m: m.id)
-
     indexed_count = 0
-    total_scanned = 0
 
     for msg in messages_to_process:
-        if msg.id == message.id:
+        if not msg or msg.id == message.id:
             continue
         text_body = (msg.text or msg.caption or "").strip()
         if text_body.startswith("/index"):
             continue
 
-        file_obj = msg.document or msg.audio or msg.voice or msg.video or msg.photo
-        if not file_obj:
+        cat, fid, fname, ftype, fcaption = classify_message_media(msg)
+        if not cat:
             continue
 
-        total_scanned += 1
+        if cat_filter and cat != cat_filter:
+            continue
 
-        fname = ""
-        mime = ""
-        title = ""
-        file_type = ""
-
-        if msg.document:
-            fname = msg.document.file_name or ""
-            mime = (msg.document.mime_type or "").lower()
-            title = fname
-            file_type = "document"
-        elif msg.audio:
-            fname = msg.audio.file_name or ""
-            mime = (msg.audio.mime_type or "").lower()
-            title = msg.audio.title or msg.audio.file_name or ""
-            if msg.audio.performer:
-                title = f"{msg.audio.performer} - {title}" if title else msg.audio.performer
-            file_type = "audio"
-        elif msg.voice:
-            fname = f"voice_{msg.id}.ogg"
-            mime = (msg.voice.mime_type or "").lower() or "audio/ogg"
-            title = "Voice Note"
-            file_type = "voice"
-        elif msg.video:
-            fname = msg.video.file_name or f"video_{msg.id}.mp4"
-            mime = (msg.video.mime_type or "").lower()
-            title = fname
-            file_type = "video"
-        elif msg.photo:
-            fname = f"photo_{msg.id}.jpg"
-            mime = "image/jpeg"
-            title = "Photo"
-            file_type = "photo"
-
-        fname_lower = fname.lower()
-        is_audio_file = (
-            msg.audio is not None
-            or msg.voice is not None
-            or fname_lower.endswith((".mp3", ".m4a", ".wav", ".aac", ".ogg", ".opus", ".flac", ".wma"))
-            or "audio" in mime
-        )
-        is_book_file = (
-            msg.document is not None and not is_audio_file and (
-                fname_lower.endswith((".pdf", ".epub", ".mobi", ".djvu", ".cbr", ".cbz", ".txt", ".doc", ".docx"))
-                or "pdf" in mime
-                or "epub" in mime
-                or "document" in mime
-                or "text" in mime
-                or not (msg.video or msg.photo or "video" in mime or "image" in mime)
-            )
-        )
-
-        item_category = None
-
-        if cat_filter == "book":
-            if is_book_file:
-                item_category = "book"
-            else:
-                continue
-        elif cat_filter == "song":
-            if is_audio_file:
-                item_category = "song"
-            else:
-                continue
-        elif cat_filter:
-            caption_cat = detect_category_from_caption(msg.caption or "")
-            if caption_cat == cat_filter:
-                item_category = cat_filter
-            else:
-                continue
-        else:
-            # Plain /index scans all files without filtering category
-            if is_book_file:
-                item_category = "book"
-            elif is_audio_file:
-                item_category = "song"
-            else:
-                caption_cat = detect_category_from_caption(msg.caption or "")
-                if caption_cat:
-                    item_category = caption_cat
-                elif msg.video:
-                    item_category = "video"
-                elif msg.photo:
-                    item_category = "photo"
-                else:
-                    item_category = "media"
-
-        fid = getattr(file_obj, "file_id", "")
-        display_name = title or fname or (msg.caption.split("\n")[0].strip() if msg.caption else "") or f"{item_category.capitalize()}_{msg.id}"
+        display_name = (fcaption.split("\n")[0].strip() if fcaption else "") or fname or f"{cat.capitalize()}_{msg.id}"
 
         db.save_file(
             message_id=msg.id,
-            channel_id=msg.chat.id if msg.chat else target_chat,
-            category=item_category,
+            channel_id=target_chat,
+            category=cat,
             file_id=fid,
             file_name=display_name,
-            file_type=file_type,
-            caption=msg.caption or ""
+            file_type=ftype,
+            caption=fcaption
         )
         indexed_count += 1
 
     if cat_filter:
         db.set_index_mode(cat_filter)
 
-    finish_text = (
-        f"✅ **Indexing Completed!**\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📁 **Category**: `{cat_filter if cat_filter else 'all files (unfiltered)'}`\n"
-        f"📊 **Files Indexed**: `{indexed_count}`\n"
-        f"🔍 **Media Found**: `{total_scanned}`\n"
-        f"💬 **Scanned Chat**: `{target_chat}`\n"
-        f"💾 Saved in local SQLite DB (`files` & `channel_media` tables)!"
-    )
+    reply_text = f"✅ Indexed {indexed_count} files into database!"
 
     if status_msg:
         try:
-            await status_msg.edit_text(finish_text)
+            await status_msg.edit_text(reply_text)
+            return
         except Exception:
-            try:
-                await message.reply_text(finish_text)
-            except Exception:
-                pass
-    else:
+            pass
+
+    try:
+        await message.reply_text(reply_text)
+    except Exception as e:
+        logger.warning(f"Could not reply in chat: {e}")
         try:
-            await message.reply_text(finish_text)
+            await client.send_message(chat_id=message.chat.id, text=reply_text)
         except Exception:
             pass
 
 @app.on_message(filters.chat(get_channel_peers()))
 async def channel_post_auto_indexer(client: Client, message: Message):
     """
-    Listens to messages posted in DATABASE_CHANNEL_ID and DATABASE_GROUP_ID.
-    1. Dynamic Category Indexing Commands: /index book, /index song, /index
-    2. Auto-indexes incoming files under current indexing mode ('books' for PDFs, 'songs' for audios).
-    3. Direct Command Reply Support: When OWNER_ID replies to an existing media message with /books, /songs, etc.
+    Listens to messages in DB_CHANNEL_ID (-1004440598458).
+    1. Active History Scanning: /index book, /index song, /index quote
+    2. Auto-Index New Posts: Auto-save any new document, audio, or photo posted in -1004440598458 to its category.
     """
-    # Prevent bot from processing its own outgoing messages in the channel
     if getattr(message, "outgoing", False) or (message.from_user and message.from_user.is_self):
         return
 
-    caption = message.caption or message.text or ""
     text_content = (message.text or message.caption or "").strip()
-    is_owner = (message.from_user and message.from_user.id == OWNER_ID) or (message.sender_chat and message.sender_chat.id in get_channel_peers()) or (message.from_user is None)
+    is_owner = (
+        (message.from_user and message.from_user.id == OWNER_ID)
+        or (message.sender_chat and message.sender_chat.id in get_channel_peers())
+        or (message.chat and message.chat.id in get_channel_peers())
+    )
 
-    # 1. Category Indexing Logic: /index [mode] in channel / database group
+    # 1. /index command
     if text_content.startswith("/index"):
         if is_owner:
             parts = text_content.split()
@@ -1459,77 +1414,36 @@ async def channel_post_auto_indexer(client: Client, message: Message):
             await index_chat_media(client, message, cat_arg)
             return
 
-    # 2. Case: Reply command in channel
+    # 2. Reply command
     if message.reply_to_message and message.command:
         cmd = message.command[0].lower()
         if cmd in CATEGORY_COMMANDS:
             if await try_index_replied_media(client, message, cmd):
                 return
 
-    # 3. Case: Incoming media file posted in DATABASE_CHANNEL_ID
-    file_obj = message.document or message.audio or message.video or message.photo or message.voice
-    if file_obj:
-        fname = ""
-        mime = ""
-        title = ""
-        file_type = ""
-        if message.document:
-            fname = message.document.file_name or ""
-            mime = (message.document.mime_type or "").lower()
-            title = fname
-            file_type = "document"
-        elif message.audio:
-            fname = message.audio.file_name or ""
-            mime = (message.audio.mime_type or "").lower()
-            title = message.audio.title or message.audio.file_name or ""
-            if message.audio.performer:
-                title = f"{message.audio.performer} - {title}" if title else message.audio.performer
-            file_type = "audio"
-
-        # Detect category: check explicit caption first
-        explicit_cat = detect_category_from_caption(caption)
-        current_mode = db.get_index_mode("books")
-        target_cat = explicit_cat if explicit_cat else current_mode
-
-        if target_cat:
-            display_name = title or fname or (caption.split("\n")[0].strip() if caption else "") or f"{target_cat.capitalize()}_{message.id}"
-            file_id = getattr(file_obj, "file_id", "")
-            
-            # Immediately save file_id, file_name, and message_id into SQLite database table with auto-commit
-            db.save_file(
-                message_id=message.id,
-                channel_id=DATABASE_CHANNEL_ID,
-                category=target_cat,
-                file_id=file_id,
-                file_name=display_name,
-                file_type=file_type,
-                caption=caption
-            )
-            logger.info(f"Auto-indexed channel media {message.id} ('{display_name}') in {target_cat} (mode: {current_mode})")
-
-            # Reply directly to that file with visual confirmation and add reaction
-            confirm_msg = f"✅ Indexed as {display_name} in {target_cat}!"
-            replied = False
-            try:
-                await message.reply_text(confirm_msg)
-                replied = True
-            except Exception as e:
-                logger.debug(f"Direct reply failed in channel: {e}")
-
-            if not replied:
-                try:
-                    await client.send_message(chat_id=message.chat.id, text=confirm_msg)
-                except Exception as e:
-                    logger.warning(f"Could not send confirmation to channel: {e}")
-
-            try:
-                await message.react("👍")
-            except Exception:
-                pass
+    # 3. Auto-Index New Posts: document, audio, or photo
+    cat, fid, fname, ftype, fcaption = classify_message_media(message)
+    if cat:
+        target_chat = message.chat.id if message.chat else DB_CHANNEL_ID
+        display_name = (fcaption.split("\n")[0].strip() if fcaption else "") or fname or f"{cat.capitalize()}_{message.id}"
+        db.save_file(
+            message_id=message.id,
+            channel_id=target_chat,
+            category=cat,
+            file_id=fid,
+            file_name=display_name,
+            file_type=ftype,
+            caption=fcaption
+        )
+        logger.info(f"Auto-indexed new {ftype} {message.id} ('{display_name}') in category '{cat}' for {target_chat}")
+        try:
+            await message.react("👍")
+        except Exception:
+            pass
 
 @app.on_message(filters.command("index"))
 async def admin_index_command(client: Client, message: Message):
-    """Allows OWNER_ID to trigger category-based indexing (/index book, /index song, /index)."""
+    """Allows OWNER_ID to trigger category-based indexing (/index book, /index song, /index quote)."""
     if message.chat and message.chat.id in get_channel_peers():
         return
 
@@ -2079,8 +1993,10 @@ async def handle_callback_query(client: Client, callback_query: CallbackQuery):
         if not sent and fid:
             try:
                 cat = item.get("category", "")
-                if cat == "songs":
+                if cat in ["songs", "song"]:
                     await client.send_audio(chat_id=target_chat, audio=fid, caption=item.get("caption") or "")
+                elif cat in ["quotes", "quote"] or item.get("file_type") == "photo":
+                    await client.send_photo(chat_id=target_chat, photo=fid, caption=item.get("caption") or "")
                 else:
                     await client.send_document(chat_id=target_chat, document=fid, caption=item.get("caption") or "")
                 sent = True
@@ -2132,7 +2048,7 @@ async def start_services():
             BotCommand("quotes", "Sacred Bhagavad Gita & Rishi shlokas"),
             BotCommand("books", "Essential Brahmacharya literature & books"),
             BotCommand("songs", "Sacred chants, bhajans & meditation audio"),
-            BotCommand("index", "Admin: Set indexing mode (/index books, /index songs)"),
+            BotCommand("index", "Admin: Scan & index (/index book, /index song, /index quote)"),
             BotCommand("save", "Admin: Index replied media under a category"),
             BotCommand("motivation", "Urge fighting rules & victory mindset")
         ]
