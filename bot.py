@@ -63,11 +63,16 @@ class Database:
         self._init_db()
 
     def _get_connection(self):
-        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+        conn = sqlite3.connect(
+            self.db_path,
+            timeout=30,
+            isolation_level=None,
+            check_same_thread=False
+        )
         conn.row_factory = sqlite3.Row
         try:
             conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("PRAGMA busy_timeout = 30000;")
+            conn.execute("PRAGMA busy_timeout=30000;")
         except Exception:
             pass
         return conn
@@ -530,6 +535,17 @@ for _fname in os.listdir(_script_dir):
             os.remove(os.path.join(_script_dir, _fname))
         except Exception:
             pass
+
+# Ensure session DB uses WAL mode and busy timeout
+_session_db = os.path.join(_script_dir, "brahmacharya_bot.session")
+if os.path.exists(_session_db):
+    try:
+        _sconn = sqlite3.connect(_session_db, timeout=30, isolation_level=None)
+        _sconn.execute("PRAGMA journal_mode=WAL;")
+        _sconn.execute("PRAGMA busy_timeout=30000;")
+        _sconn.close()
+    except Exception:
+        pass
 
 app = Client("brahmacharya_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
@@ -1412,6 +1428,57 @@ async def index_chat_media(client: Client, message: Message, category_arg: str =
             except Exception:
                 pass
 
+    # Fallback to reply range if history scan was blocked and a message was replied to
+    if total_scanned == 0 and message.reply_to_message:
+        batch_chat = message.chat.id if message.chat else target_chat
+        start_id = min(message.reply_to_message.id, message.id)
+        end_id = max(message.reply_to_message.id, message.id)
+        msg_ids = list(range(start_id, end_id + 1))
+        for i in range(0, len(msg_ids), 200):
+            chunk = msg_ids[i:i + 200]
+            try:
+                fetched = await client.get_messages(batch_chat, chunk)
+                msg_list = fetched if isinstance(fetched, list) else ([fetched] if fetched else [])
+                for m in msg_list:
+                    if not m or m.id == message.id:
+                        continue
+                    cat, fid, fname, fsize, fcaption, fmime, ftype = extract_file_details(m)
+                    if not cat:
+                        continue
+                    total_scanned += 1
+                    display_name = (fcaption.split("\n")[0].strip() if fcaption else "") or fname or f"{cat.capitalize()}_{m.id}"
+                    db.save_file(
+                        message_id=m.id,
+                        channel_id=target_chat,
+                        category=cat,
+                        file_id=fid,
+                        file_name=display_name,
+                        file_size=fsize,
+                        file_type=ftype,
+                        caption=fcaption,
+                        mime_type=fmime
+                    )
+                    if cat == "book":
+                        books_count += 1
+                    elif cat == "song":
+                        songs_count += 1
+                    elif cat == "quote":
+                        quotes_count += 1
+                    elif cat == "text":
+                        texts_count += 1
+            except Exception as e:
+                logger.debug(f"Error fetching chunk: {e}")
+
+    # If history iteration is restricted for bots, report current database counts
+    if total_scanned == 0:
+        db_books = len(db.get_category_media("book"))
+        db_songs = len(db.get_category_media("song"))
+        db_quotes = len(db.get_category_media("quote"))
+        if db_books > 0 or db_songs > 0 or db_quotes > 0:
+            books_count = db_books
+            songs_count = db_songs
+            quotes_count = db_quotes
+
     final_breakdown = (
         "✅ Indexing Complete!\n"
         f"📚 Books/PDFs: {books_count}\n"
@@ -1437,12 +1504,27 @@ async def index_chat_media(client: Client, message: Message, category_arg: str =
             except Exception:
                 pass
 
-@app.on_message(filters.chat(get_channel_peers()))
+def is_db_channel_message(_, __, message: Message) -> bool:
+    if not message:
+        return False
+    peers = get_channel_peers()
+    chat_id = getattr(message.chat, "id", None)
+    if chat_id and chat_id in peers:
+        return True
+    sender_chat_id = getattr(message.sender_chat, "id", None)
+    if sender_chat_id and sender_chat_id in peers:
+        return True
+    return False
+
+db_channel_filter = filters.chat(get_channel_peers()) | filters.create(is_db_channel_message)
+
+@app.on_message(db_channel_filter)
 async def channel_post_auto_indexer(client: Client, message: Message):
     """
     Listens to messages in DB_CHANNEL_ID (-1004440598458).
     1. Active History Scanning: /index (or /index books, /index songs, /index quotes)
-    2. Auto-Index New Posts: Auto-save any new document, audio, photo, or text posted in -1004440598458.
+    2. On-Message Real-Time Indexer:
+       Automatically index any new PDF, song, or photo posted/forwarded into DB_CHANNEL_ID (-1004440598458) into categories ('book', 'song', 'quote').
     """
     if getattr(message, "outgoing", False) or (message.from_user and message.from_user.is_self):
         return
@@ -1464,9 +1546,9 @@ async def channel_post_auto_indexer(client: Client, message: Message):
             if await try_index_replied_media(client, message, cmd):
                 return
 
-    # 3. Auto-Index New Posts: document, audio, photo, or text
+    # 3. Real-Time Indexer: Automatically index any new PDF, song, or photo posted/forwarded into DB_CHANNEL_ID (-1004440598458) into categories ('book', 'song', 'quote')
     cat, fid, fname, fsize, fcaption, fmime, ftype = extract_file_details(message)
-    if cat and fid:
+    if cat in ["book", "song", "quote"] and fid:
         target_chat = message.chat.id if message.chat else DB_CHANNEL_ID
         display_name = (fcaption.split("\n")[0].strip() if fcaption else "") or fname or f"{cat.capitalize()}_{message.id}"
         db.save_file(
@@ -1480,7 +1562,7 @@ async def channel_post_auto_indexer(client: Client, message: Message):
             caption=fcaption,
             mime_type=fmime
         )
-        logger.info(f"Auto-indexed new {ftype} {message.id} ('{display_name}', size={fsize}) in category '{cat}' for {target_chat}")
+        logger.info(f"✅ Real-time indexed new/forwarded {ftype} {message.id} ('{display_name}', size={fsize}) into category '{cat}' for {target_chat}")
         try:
             await message.react("👍")
         except Exception:
